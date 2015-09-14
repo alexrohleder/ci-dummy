@@ -136,10 +136,26 @@ class Mapper
         }
     }
 
+    /**
+     * Insert a static route into the collection.
+     *
+     * @param string               $method  The HTTP method of route. {GET, POST, PUT, PATCH, DELETE}
+     * @param string               $pattern The URi that route should match.
+     * @param string|array|closure $action  The callback for when route is matched.
+     */
+
     protected function setStatic($method, $pattern, $action)
     {
         $this->statics[$method][$pattern] = ['action' => $action, 'params' => []];
     }
+
+    /**
+     * Insert a dinamic route into the collection.
+     *
+     * @param string               $method  The HTTP method of route. {GET, POST, PUT, PATCH, DELETE}
+     * @param string               $pattern The URi that route should match.
+     * @param string|array|closure $action  The callback for when route is matched.
+     */
 
     protected function setDinamic($method, $pattern, $action)
     {
@@ -309,7 +325,7 @@ class Mapper
         }
 
         $dinamics = $this->dinamics[$method][$offset];
-        $chunks   = array_chunk($dinamics, round(1 + 3.3 * log(count($dinamics))), true); // Sturges' Formula
+        $chunks   = array_chunk($dinamics, round(1 + 3.3 * log(count($dinamics))), true);
 
         return array_map([$this, 'buildGroup'], $chunks);
     }
@@ -498,7 +514,7 @@ trait ControllerMapper
         $methods = $this->getControllerMethods($methods);
         $prefix = $this->getControllerPrefix($prefix, $controller);
 
-        foreach ($routes as $route) {
+        foreach ($methods as $route) {
             $uri = preg_replace_callback('~(^|[a-z])([A-Z])~', [$this, 'getControllerAction'], $route[1]);
 
             $method  = $route[0] . $route[1];
