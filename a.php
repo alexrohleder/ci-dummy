@@ -348,6 +348,14 @@ trait AllowExtensions
 {
 
     /**
+     * All the methods that will be fowarded to another mapper objects.
+     *
+     * @var array
+     */
+
+    protected $extenders;
+
+    /**
      * Register a new extension method in the mapper instance that will serve as interface
      * between the user of the mapper and the extension.
      *
