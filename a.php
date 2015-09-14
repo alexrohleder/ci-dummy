@@ -199,7 +199,7 @@ class Mapper
 
 trait HttpMethodMapper
 {
-    
+
     abstract public function set($method, $pattern, $action);
 
     /**
@@ -307,7 +307,7 @@ trait HttpMethodMapper
 trait ControllerMapper
 {
     
-    abstract public function set($method, $pattern, $action);
+    abstract public function match($methods, $pattern, $action);
 
     /**
      * Maps all the controller methods that begins with a HTTP method, and maps the rest of
@@ -471,7 +471,7 @@ trait ControllerMapper
     protected function getParamsConstraint(ReflectionMethod $method)
     {
         $params = [];
-        preg_match_all('~\@param\s(' . implode('|', array_keys($this->types)) . ')\s\$([a-zA-Z]+)\s(Match \((.+)\))?~', 
+        preg_match_all('~\@param\s(' . implode('|', array_keys(self::$pattern_wildcards)) . ')\s\$([a-zA-Z]+)\s(Match \((.+)\))?~', 
             $method->getDocComment(), $types, PREG_SET_ORDER);
 
         foreach ((array) $types as $type) {
@@ -501,7 +501,7 @@ trait ControllerMapper
 trait ResourceMapper
 {
     
-    abstract public function set($method, $pattern, $action);
+    abstract public function match($methods, $pattern, $action);
     
     /**
      * A map of all routes of resources.
@@ -560,7 +560,7 @@ trait ResourceMapper
     /**
      * Parse the options to find out what actions will be registered.
      *
-     * @return string
+     * @return array
      */
     protected function getActions($options)
     {
