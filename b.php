@@ -100,16 +100,16 @@ class Dispatcher
         if ($route = $this->collection->getStaticRoute($method, $uri)) {
             
             return $this->strategy->dispatch(
-                $route['action'], 
+                $route['action'],
                 []
             );
 
         }
 
-        if ($route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, $this->collection->getPatternOffset($uri)), $uri)) {
+        if ($route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, substr_count($uri, '/') - 1), $uri)) {
 
             return $this->strategy->dispatch(
-                $this->resolveDinamicRouteAction($route['action'], $route['params']), 
+                $this->resolveDinamicRouteAction($route['action'], $route['params']),
                 $route['params']
             );
 
@@ -128,7 +128,7 @@ class Dispatcher
      */
     protected function getUriPath($uri)
     {
-        $path = parse_url(substr(strstr(";$uri", ";{$this->basepath}"), strlen(";{$this->basepath}")), PHP_URL_PATH);
+        $path = parse_url(substr(strstr(';' . $uri, ';' . $this->basepath), strlen(';' . $this->basepath)), PHP_URL_PATH);
 
         if ($path === false) {
             throw new Exception('Seriously malformed URL passed to route dispatcher.');
