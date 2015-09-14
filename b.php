@@ -89,11 +89,10 @@ class Dispatcher
      *
      * @param string $method The HTTP method of the request, that should be GET, POST, PUT, PATCH or DELETE.
      * @param string $uri    The URi of request.
-     * @param bool   $quiet  Should throw exception on match errors?
      *
      * @return mixed The request response
      */
-    public function dispatch($method, $uri, $quiet = false)
+    public function dispatch($method, $uri)
     {
         $method = strtolower($method);
         $uri    = $this->getUriPath($uri);
@@ -114,10 +113,6 @@ class Dispatcher
                 $route['params']
             );
 
-        }
-
-        if ($quiet === true) {
-            return false;
         }
 
         $this->dispatchNotFoundRoute($method, $uri);
@@ -207,10 +202,12 @@ class Dispatcher
         $methods = [];
 
         foreach (Collection::$supported_http_methods as $method) {
-            if ($method !== $jump_method && $route = $this->collection->getStaticRoute($method, $uri)) {
+            if ($route = $this->collection->getStaticRoute($method, $uri)) {
                 $methods[$method] = $route;
             }
         }
+
+        unset($methods[$jump_method]);
 
         return $methods;
     }
@@ -229,10 +226,14 @@ class Dispatcher
         $offset = $this->collection->getPatternOffset($uri);
 
         foreach (Collection::$supported_http_methods as $method) {
-            if ($method !== $jump_method && $route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, $offset), $uri)) {
+            if ($route = $this->matchDinamicRoute(
+                    $this->collection->getDinamicRoutes($method, $offset), $uri)
+            ) {
                 $methods[$method] = $route;
             }
         }
+
+        unset($methods[$jump_method]);
 
         return $methods;
     }
