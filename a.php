@@ -17,18 +17,6 @@ use BadMethodCallException;
 use Codeburner\Router\Exceptions\BadRouteException;
 
 /**
- * An mapper interface, it is used to identify a class as a mapper extension definition.
- *
- * @author Alex Rohleder <contato@alexrohleder.com.br>
- * @since 1.0.0
- */
-
-interface MapperExtensionInterface
-{
-    public function __construct(Mapper $mapper);
-}
-
-/**
  * The mapper class is reponsable to hold all the defined routes and give then
  * in a organized form focused to reduce the search time.
  * 
@@ -40,17 +28,10 @@ class Mapper
 {
 
     /**
-     * Give the mapper the ability to be extended. Serving as an interface between the user
-     * and a object that holds a specific logic of registering routes.
-     *
-     * @see https://github.com/codeburnerframework/router/#extending
-     */
-
-    use AllowExtensions;
-
-    /**
      * Implement support to variations of the set method that abstract the
      * HTTP method from the parameters.
+     *
+     * @see https://github.com/codeburnerframework/router/#http-methods
      */
 
     use HttpMethodMapper;
@@ -95,10 +76,10 @@ class Mapper
      */
 
     public static $supported_http_methods = [
-        'get', 
-        'post', 
-        'put', 
-        'patch', 
+        'get',
+        'post',
+        'put',
+        'patch',
         'delete'
     ];
     
@@ -156,17 +137,8 @@ class Mapper
         $action = $this->parseRouteAction($action);
 
         foreach ($patterns as $pattern) {
-            if (strpos($pattern, '{') === false) {
-
-                $this->statics[$method][$pattern]  = ['action' => $action, 'params' => []];
-            
-            } else {
-
-                $offset = $this->getPatternOffset($pattern);
-                list($pattern, $params) = $pattern = $this->parsePatternPlaceholders($pattern);
-                $this->dinamics[$method][$offset][$pattern] = ['action' => $action, 'params' => $params];
-
-            }
+            strpos($pattern, '{') === false ? 
+                $this->setStatic($method, $pattern, $action) : $this->setDinamic($method, $pattern, $action);
         }
     }
 
@@ -216,58 +188,9 @@ class Mapper
         $patternWithoutClosingOptionals = rtrim($pattern, ']');
 
         $segments = preg_split('~' . self::DINAMIC_REGEX . '(*SKIP)(*F) | \[~x', $patternWithoutClosingOptionals);
-        $this->checkSegmentsOptionals($segments, $patternOptionalsNumber, $patternWithoutClosingOptionals);
+        $this->parseSegmentOptionals($segments, $patternOptionalsNumber, $patternWithoutClosingOptionals);
 
-        return $this->buildPatternSegments($segments);
-    }
-
-    /**
-     * Count the number of segments in a pattern or URI.
-     *
-     * @return int
-     */
-
-    public function getPatternOffset($pattern)
-    {
-        return substr_count($pattern, '/') - 1;
-    }
-
-    /**
-     * Parse the pattern seeking for the error and show a more specific message.
-     *
-     * @throws \Exception With a more specific error message.
-     */
-
-    protected function checkSegmentsOptionals($segments, $patternOptionalsNumber, $patternWithoutClosingOptionals)
-    {
-        if ($patternOptionalsNumber !== count($segments) - 1) {
-            if (preg_match('~' . self::DINAMIC_REGEX . '(*SKIP)(*F) | \]~x', $patternWithoutClosingOptionals)) {
-                   throw new BadRouteException(BadRouteException::OPTIONAL_SEGMENTS_ON_MIDDLE);
-            } else throw new BadRouteException(BadRouteException::UNCLOSED_OPTIONAL_SEGMENTS);
-        }
-    }
-
-    /**
-     * Build all the possibles patterns for a set of segments.
-     *
-     * @throws BadRouteException
-     * @return array
-     */
-
-    protected function buildPatternSegments($segments)
-    {
-        $pattern  = '';
-        $patterns = [];
-
-        foreach ($segments as $n => $segment) {
-            if ($segment === '' && $n !== 0) {
-                throw new BadRouteException(BadRouteException::EMPTY_OPTIONAL_PARTS);
-            }
-
-            $patterns[] = $pattern .= $segment;
-        }
-
-        return $patterns;
+        return $this->buildPatterns($segments);
     }
 
     /**
@@ -288,6 +211,67 @@ class Mapper
         }
 
         return [$pattern, $parameters];
+    }
+
+    /**
+     * Parse the pattern seeking for the error and show a more specific message.
+     *
+     * @throws \Exception With a more specific error message.
+     */
+
+    protected function parseSegmentOptionals($segments, $patternOptionalsNumber, $patternWithoutClosingOptionals)
+    {
+        if ($patternOptionalsNumber !== count($segments) - 1) {
+            if (preg_match('~' . self::DINAMIC_REGEX . '(*SKIP)(*F) | \]~x', $patternWithoutClosingOptionals)) {
+                   throw new BadRouteException(BadRouteException::OPTIONAL_SEGMENTS_ON_MIDDLE);
+            } else throw new BadRouteException(BadRouteException::UNCLOSED_OPTIONAL_SEGMENTS);
+        }
+    }
+
+    /**
+     * Build all the possibles patterns for a set of segments.
+     *
+     * @throws BadRouteException
+     * @return array
+     */
+
+    protected function buildPatterns($segments)
+    {
+        $pattern  = '';
+        $patterns = [];
+
+        foreach ($segments as $n => $segment) {
+            if ($segment === '' && $n !== 0) {
+                throw new BadRouteException(BadRouteException::EMPTY_OPTIONAL_PARTS);
+            }
+
+            $patterns[] = $pattern .= $segment;
+        }
+
+        return $patterns;
+    }
+
+    /**
+     * Group several routes into one unique regex.
+     *
+     * @param  array $routes All the routes that must be grouped
+     * @return array
+     */
+
+    protected function buildGroup($routes)
+    {
+        $map = []; 
+        $regexes = []; 
+        $groupcount = 0;
+
+        foreach ($routes as $regex => $route) {
+            $paramscount      = count($route['params']);
+            $groupcount       = max($groupcount, $paramscount) + 1;
+            $regexes[]        = $regex . str_repeat('()', $groupcount - $paramscount - 1);
+            $map[$groupcount] = [$route['action'], $route['params']];
+        }
+
+        return ['regex' => '~^(?|' . implode('|', $regexes) . ')$~', 'map' => $map];
     }
 
     /**
@@ -319,73 +303,9 @@ class Mapper
         }
 
         $dinamics = $this->dinamics[$method][$offset];
-        $chunks   = array_chunk($dinamics, round(1 + 2.33 * log(count($dinamics))), true); // Sturges' Formula
+        $chunks   = array_chunk($dinamics, round(1 + 3.3 * log(count($dinamics))), true); // Sturges' Formula
 
-        return array_map(function ($routes) {
-            $map = []; $regexes = []; $groupcount = 0;
-
-            foreach ($routes as $regex => $route) {
-                $paramscount      = count($route['params']);
-                $groupcount       = max($groupcount, $paramscount) + 1;
-                $regexes[]        = $regex . str_repeat('()', $groupcount - $paramscount - 1);
-                $map[$groupcount] = [$route['action'], $route['params']];
-            }
-
-            return ['regex' => '~^(?|' . implode('|', $regexes) . ')$~', 'map' => $map];
-        }, $chunks);
-    }
-}
-
-/**
- * Give the mapper the ability to be extended. Serving as an interface between the user
- * and a object that holds a specific logic of registering routes.
- *
- * @author Alex Rohleder <contato@alexrohleder.com.br>
- * @since 1.0.0
- */
-
-trait AllowExtensions
-{
-
-    /**
-     * All the methods that will be fowarded to another mapper objects.
-     *
-     * @var array
-     */
-
-    protected $extenders;
-
-    /**
-     * Register a new extension method in the mapper instance that will serve as interface
-     * between the user of the mapper and the extension.
-     *
-     * @param string|array             $methods  The methods that will be acessible in the mapper.
-     * @param MapperExtensionInterface $extender The class that contain the implementation of the methods.
-     *
-     * @return null
-     */
-
-    public function extend($methods, MapperExtensionInterface $extender)
-    {
-        foreach ((array) $methods as $method) {
-            $this->extenders[$method] = [$extender, $method];
-        }
-    }
-
-    /**
-     * Try to find the method that was called into the extensions.
-     *
-     * @throws BadMethodCallException
-     * @return mixed
-     */
-
-    public function __call($method, $parameters)
-    {
-        if (isset($this->extenders[$method])) {
-            return call_user_func_array($this->extenders[$method], $parameters);
-        }
-
-        throw new BadMethodCallException("Mapper method \"$method\" not found, no Mapper was registered for this method.");
+        return array_map([$this, 'buildGroup'], $chunks);
     }
 
 }
@@ -408,10 +328,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function get($pattern, $action)
     {
-        return $this->set('get', $pattern, $action);
+        $this->set('get', $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -419,10 +343,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function post($pattern, $action)
     {
         $this->set('post', $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -430,10 +358,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function put($pattern, $action)
     {
         $this->set('put', $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -441,10 +373,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function patch($pattern, $action)
     {
         $this->set('patch', $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -452,10 +388,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function delete($pattern, $action)
     {
         $this->set('delete', $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -463,10 +403,14 @@ trait HttpMethodMapper
      *
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function any($pattern, $action)
     {
         $this->match(self::$supported_http_methods, $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -475,10 +419,14 @@ trait HttpMethodMapper
      * @param string                $method   The method that must be excluded.
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function except($method, $pattern, $action)
     {
         $this->match(array_diff(self::$supported_http_methods, (array) $method), $pattern, $action);
+
+        return $this;
     }
 
     /**
@@ -487,12 +435,16 @@ trait HttpMethodMapper
      * @param string|array          $methods  The method that must be matched.
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
+     *
+     * @return Mapper
      */
     public function match($methods, $pattern, $action)
     {
         foreach ((array) $methods as $method) {
             $this->set($method, $pattern, $action);
         }
+
+        return $this;
     }
 
 }
@@ -526,18 +478,20 @@ trait ControllerMapper
         }
 
         $methods = $this->getControllerMethods($methods);
-        $prefix = $this->getPathPrefix($prefix, $controller);
+        $prefix = $this->getControllerPrefix($prefix, $controller);
 
         foreach ($methods as $httpmethod => $classmethods) {
             foreach ($classmethods as $classmethod) {
                 $uri = preg_replace_callback('~(^|[a-z])([A-Z])~', [$this, 'getControllerAction'], $classmethod);
 
                 $method  = $httpmethod . $classmethod;
-                $dinamic = $this->getMethodDinamicPattern($controller, $method);
+                $dinamic = $this->getMethodConstraints($controller, $method);
 
                 $this->match($httpmethod, $prefix . "$uri$dinamic", "$controller#$method");
             }
         }
+
+        return $this;
     }
 
     /**
@@ -548,7 +502,7 @@ trait ControllerMapper
      *
      * @return string
      */
-    protected function getPathPrefix($prefix, $controller)
+    protected function getControllerPrefix($prefix, $controller)
     {
         $path = '/';
 
@@ -574,13 +528,17 @@ trait ControllerMapper
      *
      * @return string
      */
-    public function getControllerName($controller)
+    public function getControllerName($controller, array $options = array())
     {
+        if (isset($options['as'])) {
+            return $options['as'];
+        }
+
         if (is_object($controller)) {
             $controller = get_class($controller);
         }
 
-        return strtolower(strstr($controller, 'Controller', true));
+        return strtolower(strstr(array_reverse(explode('\\', $controller))[0], 'Controller', true));
     }
 
     /**
@@ -613,7 +571,7 @@ trait ControllerMapper
      *
      * @return string The resulting URi.
      */
-    protected function getMethodDinamicPattern($controller, $method)
+    protected function getMethodConstraints($controller, $method)
     {
         $method = new ReflectionMethod($controller, $method);
         $uri    = '';
@@ -699,10 +657,18 @@ trait ControllerMapper
 
 }
 
+/**
+ * Enable mapper to be more RESTFul, registering 7 routes at same time for all the CRUD operations.
+ *
+ * @author Alex Rohleder <contato@alexrohleder.com.br>
+ * @since 1.0.0
+ */
+
 trait ResourceMapper
 {
-    
+
     abstract public function match($methods, $pattern, $action);
+    abstract public function getControllerName($controller);
     
     /**
      * A map of all routes of resources.
@@ -731,31 +697,15 @@ trait ResourceMapper
      */
     public function resource($controller, array $options = array())
     {
-        $name = $this->getName($controller, $options);
-        $actions = $this->getActions($options);
+        $name = $this->getControllerName($controller, $options);
+        $actions = $this->getResourceActions($options);
 
         foreach ($actions as $action => $map) {
-            $this->match($map[0], str_replace(':name', $name, $map[1]), 
+            $this->set($map[0], str_replace(':name', $name, $map[1]), 
                 is_string($controller) ? "$controller#$action" : [$controller, $action]);
         }
-    }
 
-    /**
-     * Get the name of controller or an defined name, that will be used to make the URis.
-     *
-     * @return string
-     */
-    protected function getName($controller, array $options)
-    {
-        if (isset($options['as'])) {
-            return $options['as'];
-        }
-
-        if (is_object($controller)) {
-            $controller = get_class($controller);
-        }
-
-        return strtolower(strstr(array_reverse(explode('\\', $controller))[0], 'Controller', true));
+        return $this;
     }
 
     /**
@@ -763,16 +713,14 @@ trait ResourceMapper
      *
      * @return array
      */
-    protected function getActions($options)
+    protected function getResourceActions($options)
     {
         $actions = $this->map;
 
         if (isset($options['only'])) {
-            $actions = $this->getFilteredActions($options['only'], true);
-        }
-
-        if (isset($options['except'])) {
-            $actions = $this->getFilteredActions($options['except'], false);
+            $actions = $this->getFilteredResourceActions($options['only'], true);
+        } elseif (isset($options['except'])) {
+            $actions = $this->getFilteredResourceActions($options['except'], false);
         }
 
         return $actions;
@@ -786,7 +734,7 @@ trait ResourceMapper
      *
      * @return array
      */
-    protected function getFilteredActions($methods, $exists)
+    protected function getFilteredResourceActions($methods, $exists)
     {
         $actions = $this->map;
         $methods = array_change_key_case(array_flip($methods), CASE_LOWER);
