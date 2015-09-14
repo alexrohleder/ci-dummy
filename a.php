@@ -10,13 +10,14 @@
 
 namespace Codeburner\Router;
 
-use Exception;
 use ReflectionMethod;
 use ReflectionParameter;
-use Codeburner\Router\BadRouteException;
+use Exception;
+use BadMethodCallException;
+use Codeburner\Router\Exceptions\BadRouteException;
 
 /**
- * An empty interface, it is used to identify a class as a mapper extension definition.
+ * An mapper interface, it is used to identify a class as a mapper extension definition.
  *
  * @author Alex Rohleder <contato@alexrohleder.com.br>
  * @since 1.0.0
@@ -24,7 +25,7 @@ use Codeburner\Router\BadRouteException;
 
 interface MapperExtensionInterface
 {
-    // empty ...
+    public function __construct(Mapper $mapper);
 }
 
 /**
@@ -38,12 +39,60 @@ interface MapperExtensionInterface
 class Mapper
 {
 
+    /**
+     * Give the mapper the ability to be extended. Serving as an interface between the user
+     * and a object that holds a specific logic of registering routes.
+     *
+     * @see https://github.com/codeburnerframework/router/#extending
+     */
+
+    use AllowExtensions;
+
+    /**
+     * Implement support to variations of the set method that abstract the
+     * HTTP method from the parameters.
+     */
+
     use HttpMethodMapper;
+
+    /**
+     * Insert support for mapping a resource.
+     *
+     * @see https://github.com/codeburnerframework/router/#resources
+     */
+
     use ResourceMapper;
+
+    /**
+     * Add support to abstract a entire controller registration.
+     *
+     * @see https://github.com/codeburnerframework/router/#controllers
+     */
+
     use ControllerMapper;
 
+    /**
+     * The regex used to parse all the routes patterns. For more information
+     * contact the author of this class.
+     *
+     * @var string
+     */
+
     const DINAMIC_REGEX = '\{\s*([\w]*)\s*(?::\s*([^{}]*(?:\{(?-1)\}[^{}]*)*))?\s*\}';
+    
+    /**
+     * The default pattern that will be used to match a dinamic segment of a route.
+     *
+     * @var string
+     */
+
     const DEFAULT_PLACEHOLD_REGEX = '([^/]+)';
+
+    /**
+     * All the currently supported HTTP methods.
+     *
+     * @var array
+     */
 
     public static $supported_http_methods = [
         'get', 
@@ -53,6 +102,12 @@ class Mapper
         'delete'
     ];
     
+    /**
+     * A set of aliases to regex that can be used in patterns definitions.
+     *
+     * @var array
+     */
+
     public static $pattern_wildcards = [
         'int' => '\d+',
         'integer' => '\d+',
@@ -62,10 +117,37 @@ class Mapper
         'boolean' => '^(1|0|true|false|yes|no)$'
     ];
     
+    /**
+     * The delimiter in the controller/method action espefication.
+     *
+     * @var string
+     */
+
     public static $action_separator = '#';
 
+    /**
+     * Routes without parameters.
+     *
+     * @var array
+     */
+
     protected $statics  = [];
+
+    /**
+     * Routes with parameters to compute.
+     *
+     * @var array
+     */
+
     protected $dinamics = [];
+
+    /**
+     * Insert a route into the collection.
+     *
+     * @param string               $method  The HTTP method of route. {GET, POST, PUT, PATCH, DELETE}
+     * @param string               $pattern The URi that route should match.
+     * @param string|array|closure $action  The callback for when route is matched.
+     */
 
     public function set($method, $pattern, $action)
     {
@@ -81,11 +163,21 @@ class Mapper
             } else {
 
                 $offset = $this->getPatternOffset($pattern);
-                $this->dinamics[$method][$offset][$pattern] = ['action' => $action, 'params' => []];
+                list($pattern, $params) = $pattern = $this->parsePatternPlaceholders($pattern);
+                $this->dinamics[$method][$offset][$pattern] = ['action' => $action, 'params' => $params];
 
             }
         }
     }
+
+    /**
+     * Ensure that the given HTTP method is supported by the package.
+     *
+     * @param string The given HTTP method.
+     *
+     * @throws BadRouteException
+     * @return string
+     */
 
     protected function parseHttpMethod($method)
     {
@@ -96,6 +188,12 @@ class Mapper
         return $method;
     }
 
+    /**
+     * Parses the given action to something that can be called.
+     *
+     * @return callable|array
+     */
+
     protected function parseRouteAction($action)
     {
         if (is_string($action)) {
@@ -104,6 +202,13 @@ class Mapper
 
         return $action;
     }
+
+    /**
+     * Separate routes pattern with optional parts into n new patterns.
+     *
+     * @param string $pattern The route pattern to parse.
+     * @return array
+     */
 
     protected function parsePatternOptionals($pattern)
     {
@@ -116,10 +221,22 @@ class Mapper
         return $this->buildPatternSegments($segments);
     }
 
+    /**
+     * Count the number of segments in a pattern or URI.
+     *
+     * @return int
+     */
+
     public function getPatternOffset($pattern)
     {
         return substr_count($pattern, '/') - 1;
     }
+
+    /**
+     * Parse the pattern seeking for the error and show a more specific message.
+     *
+     * @throws \Exception With a more specific error message.
+     */
 
     protected function checkSegmentsOptionals($segments, $patternOptionalsNumber, $patternWithoutClosingOptionals)
     {
@@ -129,6 +246,13 @@ class Mapper
             } else throw new BadRouteException(BadRouteException::UNCLOSED_OPTIONAL_SEGMENTS);
         }
     }
+
+    /**
+     * Build all the possibles patterns for a set of segments.
+     *
+     * @throws BadRouteException
+     * @return array
+     */
 
     protected function buildPatternSegments($segments)
     {
@@ -146,6 +270,13 @@ class Mapper
         return $patterns;
     }
 
+    /**
+     * Parse an route pattern seeking for parameters and making the route regex.
+     *
+     * @param string $pattern The route pattern to be parsed.
+     * @return array 0 => new route regex, 1 => map of parameters names.
+     */
+
     protected function parsePatternPlaceholders($pattern)
     {
         $parameters = [];
@@ -159,10 +290,27 @@ class Mapper
         return [$pattern, $parameters];
     }
 
-    public function getStaticRoutes($method)
+    /**
+     * Retrieve a specific static route or a false.
+     *
+     * @return array|false
+     */
+
+    public function getStaticRoute($method, $pattern)
     {
-        return $this->statics[$method];
+        if (isset($this->statics[$method]) && isset($this->statics[$method][$pattern])) {
+            return $this->statics[$method][$pattern];
+        }
+
+        return false;
     }
+
+    /**
+     * Concat all dinamic routes regex for a given method, this speeds up the match.
+     *
+     * @param string $method The http method to search in.
+     * @return array [['regex', 'map' => [0 => action, 1 => params]]]
+     */
 
     public function getDinamicRoutes($method, $offset)
     {
@@ -185,6 +333,51 @@ class Mapper
 
             return ['regex' => '~^(?|' . implode('|', $regexes) . ')$~', 'map' => $map];
         }, $chunks);
+    }
+}
+
+/**
+ * Give the mapper the ability to be extended. Serving as an interface between the user
+ * and a object that holds a specific logic of registering routes.
+ *
+ * @author Alex Rohleder <contato@alexrohleder.com.br>
+ * @since 1.0.0
+ */
+
+trait AllowExtensions
+{
+
+    /**
+     * Register a new extension method in the mapper instance that will serve as interface
+     * between the user of the mapper and the extension.
+     *
+     * @param string|array             $methods  The methods that will be acessible in the mapper.
+     * @param MapperExtensionInterface $extender The class that contain the implementation of the methods.
+     *
+     * @return null
+     */
+
+    public function extend($methods, MapperExtensionInterface $extender)
+    {
+        foreach ((array) $methods as $method) {
+            $this->extenders[$method] = [$extender, $method];
+        }
+    }
+
+    /**
+     * Try to find the method that was called into the extensions.
+     *
+     * @throws BadMethodCallException
+     * @return mixed
+     */
+
+    public function __call($method, $parameters)
+    {
+        if (isset($this->extenders[$method])) {
+            return call_user_func_array($this->extenders[$method], $parameters);
+        }
+
+        throw new BadMethodCallException("Mapper method \"$method\" not found, no Mapper was registered for this method.");
     }
 
 }
