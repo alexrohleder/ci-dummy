@@ -80,7 +80,7 @@ class Mapper
             
             } else {
 
-                $offset = $this->getPatternOffset();
+                $offset = $this->getPatternOffset($pattern);
                 $this->dinamics[$method][$offset][$pattern] = ['action' => $action, 'params' => []];
 
             }
@@ -199,6 +199,8 @@ class Mapper
 
 trait HttpMethodMapper
 {
+    
+    abstract public function set($method, $pattern, $action);
 
     /**
      * Register a route into GET method.
@@ -304,6 +306,8 @@ trait HttpMethodMapper
 
 trait ControllerMapper
 {
+    
+    abstract public function set($method, $pattern, $action);
 
     /**
      * Maps all the controller methods that begins with a HTTP method, and maps the rest of
@@ -496,6 +500,8 @@ trait ControllerMapper
 
 trait ResourceMapper
 {
+    
+    abstract public function set($method, $pattern, $action);
     
     /**
      * A map of all routes of resources.
