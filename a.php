@@ -10,12 +10,6 @@
 
 namespace Codeburner\Router;
 
-use ReflectionMethod;
-use ReflectionParameter;
-use Exception;
-use BadMethodCallException;
-use Codeburner\Router\Exceptions\BadRouteException;
-
 /**
  * The mapper class is reponsable to hold all the defined routes and give then
  * in a organized form focused to reduce the search time.
@@ -142,19 +136,31 @@ class Mapper
         }
     }
 
+    protected function setStatic($method, $pattern, $action)
+    {
+        $this->statics[$method][$pattern] = ['action' => $action, 'params' => []];
+    }
+
+    protected function setDinamic($method, $pattern, $action)
+    {
+        $offset = substr_count($pattern, '/') - 1;
+        list($pattern, $params) = $pattern = $this->parsePatternPlaceholders($pattern);
+        $this->dinamics[$method][$offset][$pattern] = ['action' => $action, 'params' => $params];
+    }
+
     /**
      * Ensure that the given HTTP method is supported by the package.
      *
      * @param string The given HTTP method.
      *
-     * @throws BadRouteException
+     * @throws Exceptions\BadRouteException
      * @return string
      */
 
     protected function parseHttpMethod($method)
     {
         if (!in_array($method = strtolower($method), self::$supported_http_methods)) {
-            throw new BadRouteException(BadRouteException::UNSUPPORTED_HTTP_METHOD);
+            throw new Exceptions\BadRouteException(Exceptions\BadRouteException::UNSUPPORTED_HTTP_METHOD);
         }
 
         return $method;
@@ -223,15 +229,15 @@ class Mapper
     {
         if ($patternOptionalsNumber !== count($segments) - 1) {
             if (preg_match('~' . self::DINAMIC_REGEX . '(*SKIP)(*F) | \]~x', $patternWithoutClosingOptionals)) {
-                   throw new BadRouteException(BadRouteException::OPTIONAL_SEGMENTS_ON_MIDDLE);
-            } else throw new BadRouteException(BadRouteException::UNCLOSED_OPTIONAL_SEGMENTS);
+                   throw new Exceptions\BadRouteException(Exceptions\BadRouteException::OPTIONAL_SEGMENTS_ON_MIDDLE);
+            } else throw new Exceptions\BadRouteException(Exceptions\BadRouteException::UNCLOSED_OPTIONAL_SEGMENTS);
         }
     }
 
     /**
      * Build all the possibles patterns for a set of segments.
      *
-     * @throws BadRouteException
+     * @throws Exceptions\BadRouteException
      * @return array
      */
 
@@ -242,7 +248,7 @@ class Mapper
 
         foreach ($segments as $n => $segment) {
             if ($segment === '' && $n !== 0) {
-                throw new BadRouteException(BadRouteException::EMPTY_OPTIONAL_PARTS);
+                throw new Exceptions\BadRouteException(Exceptions\BadRouteException::EMPTY_OPTIONAL_PARTS);
             }
 
             $patterns[] = $pattern .= $segment;
@@ -331,6 +337,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function get($pattern, $action)
     {
         $this->set('get', $pattern, $action);
@@ -346,6 +353,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function post($pattern, $action)
     {
         $this->set('post', $pattern, $action);
@@ -361,6 +369,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function put($pattern, $action)
     {
         $this->set('put', $pattern, $action);
@@ -376,6 +385,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function patch($pattern, $action)
     {
         $this->set('patch', $pattern, $action);
@@ -391,6 +401,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function delete($pattern, $action)
     {
         $this->set('delete', $pattern, $action);
@@ -406,6 +417,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function any($pattern, $action)
     {
         $this->match(self::$supported_http_methods, $pattern, $action);
@@ -422,6 +434,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function except($method, $pattern, $action)
     {
         $this->match(array_diff(self::$supported_http_methods, (array) $method), $pattern, $action);
@@ -438,6 +451,7 @@ trait HttpMethodMapper
      *
      * @return Mapper
      */
+
     public function match($methods, $pattern, $action)
     {
         foreach ((array) $methods as $method) {
@@ -470,25 +484,27 @@ trait ControllerMapper
      *
      * @param string|object $controller The controller name or representation.
      * @param bool          $prefix     Dict if the controller name should prefix the path.
+     *
+     * @throws \Exception
+     * @return Mapper
      */
+
     public function controller($controller, $prefix = true)
     {
         if (!$methods = get_class_methods($controller)) {
-            throw new Exception('The controller class coul\'d not be inspected.');
+            throw new \Exception('The controller class coul\'d not be inspected.');
         }
 
         $methods = $this->getControllerMethods($methods);
         $prefix = $this->getControllerPrefix($prefix, $controller);
 
-        foreach ($methods as $httpmethod => $classmethods) {
-            foreach ($classmethods as $classmethod) {
-                $uri = preg_replace_callback('~(^|[a-z])([A-Z])~', [$this, 'getControllerAction'], $classmethod);
+        foreach ($routes as $route) {
+            $uri = preg_replace_callback('~(^|[a-z])([A-Z])~', [$this, 'getControllerAction'], $route[1]);
 
-                $method  = $httpmethod . $classmethod;
-                $dinamic = $this->getMethodConstraints($controller, $method);
+            $method  = $route[0] . $route[1];
+            $dinamic = $this->getMethodConstraints($controller, $method);
 
-                $this->match($httpmethod, $prefix . "$uri$dinamic", "$controller#$method");
-            }
+            $this->match($route[0], $prefix . "$uri$dinamic", $controller . self::$action_separator . $method);
         }
 
         return $this;
@@ -502,6 +518,7 @@ trait ControllerMapper
      *
      * @return string
      */
+
     protected function getControllerPrefix($prefix, $controller)
     {
         $path = '/';
@@ -518,6 +535,7 @@ trait ControllerMapper
      *
      * @return string
      */
+
     public function getControllerAction($matches)
     {
         return strtolower(strlen($matches[1]) ? $matches[1] . '/' . $matches[2] : $matches[2]);
@@ -528,6 +546,7 @@ trait ControllerMapper
      *
      * @return string
      */
+
     public function getControllerName($controller, array $options = array())
     {
         if (isset($options['as'])) {
@@ -547,6 +566,7 @@ trait ControllerMapper
      * @param array $methods All the controller public methods
      * @return array An array keyed by HTTP methods and their controller methods.
      */
+
     protected function getControllerMethods($methods)
     {
         $mapmethods = [];
@@ -555,7 +575,7 @@ trait ControllerMapper
         foreach ($methods as $classmethod) {
             foreach ($httpmethods as $httpmethod) {
                 if (strpos($classmethod, $httpmethod) === 0) {
-                    $mapmethods[$httpmethod][] = substr($classmethod, strlen($httpmethod));
+                    $mapmethods[] = [$httpmethod, substr($classmethod, strlen($httpmethod))];
                 }
             }
         }
@@ -571,9 +591,10 @@ trait ControllerMapper
      *
      * @return string The resulting URi.
      */
+
     protected function getMethodConstraints($controller, $method)
     {
-        $method = new ReflectionMethod($controller, $method);
+        $method = new \ReflectionMethod($controller, $method);
         $uri    = '';
 
         if ($parameters = $method->getParameters())
@@ -604,12 +625,13 @@ trait ControllerMapper
     /**
      * Return a URi segment based on parameters constraints.
      *
-     * @param ReflectionParameter $parameter The parameter base to build the constraint.
+     * @param \ReflectionParameter $parameter The parameter base to build the constraint.
      * @param array $types All the parsed constraints.
      *
      * @return string
      */
-    protected function getUriConstraint(ReflectionParameter $parameter, $types)
+
+    protected function getUriConstraint(\ReflectionParameter $parameter, $types)
     {
         $name = $parameter->name;
         $uri  = '/{' . $name;
@@ -624,10 +646,11 @@ trait ControllerMapper
     /**
      * Get all parameters with they constraint.
      *
-     * @param ReflectionMethod $method The method to be inspected name.
+     * @param \ReflectionMethod $method The method to be inspected name.
      * @return array All the parameters with they constraint.
      */
-    protected function getParamsConstraint(ReflectionMethod $method)
+
+    protected function getParamsConstraint(\ReflectionMethod $method)
     {
         $params = [];
         preg_match_all('~\@param\s(' . implode('|', array_keys(self::$pattern_wildcards)) . ')\s\$([a-zA-Z]+)\s(Match \((.+)\))?~', 
@@ -646,6 +669,7 @@ trait ControllerMapper
      * @param string $type The PHPDoc type.
      * @return string The Constraint string.
      */
+
     protected function getParamConstraint($type)
     {
         if (isset($type[4])) {
@@ -667,14 +691,15 @@ trait ControllerMapper
 trait ResourceMapper
 {
 
-    abstract public function match($methods, $pattern, $action);
-    abstract public function getControllerName($controller);
-    
+    abstract public function set($methods, $pattern, $action);
+    abstract public function getControllerName($controller, array $options = array());
+
     /**
      * A map of all routes of resources.
      *
      * @var array
      */
+
     protected $map = [
         'index' => ['get', '/:name'],
         'make' => ['get', '/:name/make'],
@@ -695,6 +720,7 @@ trait ResourceMapper
      *                               explicty say that only this routes will be registered, and 
      *                               except that register all the routes except the indicates.
      */
+
     public function resource($controller, array $options = array())
     {
         $name = $this->getControllerName($controller, $options);
@@ -713,40 +739,18 @@ trait ResourceMapper
      *
      * @return array
      */
+
     protected function getResourceActions($options)
     {
-        $actions = $this->map;
-
         if (isset($options['only'])) {
-            $actions = $this->getFilteredResourceActions($options['only'], true);
-        } elseif (isset($options['except'])) {
-            $actions = $this->getFilteredResourceActions($options['except'], false);
+            return array_intersect_key($this->map, array_flip($options['only']));
         }
 
-        return $actions;
-    }
-
-    /**
-     * Return an array with the methods and urls for the given resource.
-     *
-     * @param string $methods The given resource actions.
-     * @param bool   $exists  Dict if the informed $methods must be included or excluded.
-     *
-     * @return array
-     */
-    protected function getFilteredResourceActions($methods, $exists)
-    {
-        $actions = $this->map;
-        $methods = array_change_key_case(array_flip($methods), CASE_LOWER);
-
-        foreach ($actions as $action => $map) {
-            if ((isset($methods[$map[0]]) && !$exists)
-                    || (!isset($methods[$map[0]]) && $exists)) {
-                unset($actions[$action]);
-            }   
+        if (isset($options['except'])) {
+            return array_diff_key($this->map, array_flip($options['except']));
         }
 
-        return $actions;
+        return $this->map;
     }
 
 }
