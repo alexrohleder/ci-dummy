@@ -54,6 +54,7 @@ class Dispatcher
      *
      * @var StrategyInterface
      */
+
     protected $strategy;
 
     /**
@@ -61,6 +62,7 @@ class Dispatcher
      *
      * @var Collection
      */
+
     protected $collection;
 
     /**
@@ -68,6 +70,7 @@ class Dispatcher
      *
      * @var string
      */
+
     protected $basepath;
 
     /**
@@ -77,6 +80,7 @@ class Dispatcher
      * @param string            $basepath   Define a URI prefix that must be excluded on matches.
      * @param StrategyInterface $strategy   The strategy to dispatch matched route action.
      */
+
     public function __construct(Collection $collection, $basepath = '', StrategyInterface $strategy = null)
     {
         $this->collection = $collection;
@@ -92,10 +96,11 @@ class Dispatcher
      *
      * @return mixed The request response
      */
+
     public function dispatch($method, $uri)
     {
-        $method = strtolower($method);
-        $uri    = $this->getUriPath($uri);
+        $method = $this->getHttpMethod($method);
+        $uri = $this->getUriPath($uri);
 
         if ($route = $this->collection->getStaticRoute($method, $uri)) {
             
@@ -106,7 +111,7 @@ class Dispatcher
 
         }
 
-        if ($route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, substr_count($uri, '/') - 1), $uri)) {
+        if ($route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, $uri), $uri)) {
 
             return $this->strategy->dispatch(
                 $this->resolveDinamicRouteAction($route['action'], $route['params']),
@@ -119,6 +124,27 @@ class Dispatcher
     }
 
     /**
+     * Verify if the given http method is valid.
+     *
+     * @param  int|string $method
+     * @throws Exception
+     * @return int
+     */
+
+    protected function getHttpMethod($method)
+    {
+        if (in_array($method, Mapper::$methods)) {
+            return $method;
+        }
+
+        if (in_array(strtolower($method), $methods = array_map('strtolower', array_flip(Mapper::$methods)))) {
+            return $method;
+        }
+
+        throw new Exception('The HTTP method given to the route dispatcher is not supported or is incorrect.');
+    }
+
+    /**
      * Get only the path of a given url or uri.
      *
      * @param string $uri The given URL
@@ -126,6 +152,7 @@ class Dispatcher
      * @throws Exception
      * @return string
      */
+
     protected function getUriPath($uri)
     {
         $path = parse_url(substr(strstr(';' . $uri, ';' . $this->basepath), strlen(';' . $this->basepath)), PHP_URL_PATH);
@@ -146,6 +173,7 @@ class Dispatcher
      * @return array|false If the request match an array with the action and parameters will be returned
      *                     otherwide a false will.
      */
+
     protected function matchDinamicRoute($routes, $uri)
     {
         foreach ($routes as $route) {
@@ -153,16 +181,16 @@ class Dispatcher
                 continue;
             }
 
-            list($action, $params) = $route['map'][count($matches)];
+            list($routeAction, $routeParams) = $route['map'][count($matches)];
 
-            $parameters = [];
+            $params = [];
             $i = 0;
 
-            foreach ($params as $name) {
-                $parameters[$name] = $matches[++$i];
+            foreach ($routeParams as $name) {
+                $params[$name] = $matches[++$i];
             }
 
-            return ['action' => $action, 'params' => $parameters];
+            return ['action' => $routeAction, 'params' => $params];
         }
 
         return false;
@@ -177,6 +205,7 @@ class Dispatcher
      * @throws NotFoundException
      * @throws MethodNotAllowedException
      */
+
     protected function dispatchNotFoundRoute($method, $uri)
     {
         $dm = $dm = [];
@@ -197,11 +226,12 @@ class Dispatcher
      *
      * @return array
      */
+
     protected function checkStaticRouteInOtherMethods($jump_method, $uri)
     {
         $methods = [];
 
-        foreach (Collection::$supported_http_methods as $method) {
+        foreach (Mapper::$methods as $method) {
             if ($route = $this->collection->getStaticRoute($method, $uri)) {
                 $methods[$method] = $route;
             }
@@ -220,12 +250,13 @@ class Dispatcher
      *
      * @return array
      */
+
     protected function checkDinamicRouteInOtherMethods($jump_method, $uri)
     {
         $methods = [];
-        $offset = $this->collection->getPatternOffset($uri);
+        $offset = substr_count($uri, '/') - 1;
 
-        foreach (Collection::$supported_http_methods as $method) {
+        foreach (Mapper::$methods as $method) {
             if ($route = $this->matchDinamicRoute(
                     $this->collection->getDinamicRoutes($method, $offset), $uri)
             ) {
@@ -246,6 +277,7 @@ class Dispatcher
      *
      * @return string
      */
+
     protected function resolveDinamicRouteAction($action, $params)
     {
         if (is_array($action)) {
@@ -264,6 +296,7 @@ class Dispatcher
      *
      * @return Collection
      */
+
     public function getCollection()
     {
         return $this->collection;
@@ -274,6 +307,7 @@ class Dispatcher
      *
      * @return StrategyInterface
      */
+
     public function getStrategy()
     {
         return $this->strategy;
@@ -284,6 +318,7 @@ class Dispatcher
      *
      * @return string
      */
+
     public function getBasePath()
     {
         return $this->basepath;
@@ -295,6 +330,7 @@ class Dispatcher
      *
      * @param string $basepath The new basepath
      */
+    
     public function setBasePath($basepath)
     {
         $this->basepath = $basepath;
