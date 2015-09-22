@@ -235,17 +235,9 @@ class Dispatcher
 
     protected function checkStaticRouteInOtherMethods($jump_method, $uri)
     {
-        $methods = [];
-
-        foreach (Mapper::$methods as $method) {
-            if ($route = $this->collection->getStaticRoute($method, $uri)) {
-                $methods[$method] = $route;
-            }
-        }
-
-        unset($methods[$jump_method]);
-
-        return $methods;
+        return array_filter(array_diff_key(Mapper::$methods, [$jump_method => true]), function ($method) use ($uri) {
+            return (bool) $this->collection->getStaticRoute($method, $uri);
+        });
     }
 
     /**
@@ -259,19 +251,9 @@ class Dispatcher
 
     protected function checkDinamicRouteInOtherMethods($jump_method, $uri)
     {
-        $methods = [];
-
-        foreach (Mapper::$methods as $method) {
-            if ($route = $this->matchDinamicRoute(
-                    $this->collection->getDinamicRoutes($method, $uri), $uri)
-            ) {
-                $methods[$method] = $route;
-            }
-        }
-
-        unset($methods[$jump_method]);
-
-        return $methods;
+        return array_filter(array_diff_key(Mapper::$methods, [$jump_method => true]), function ($method) use ($uri) {
+            return (bool) $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, $uri), $uri);
+        });
     }
 
     /**
