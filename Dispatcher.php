@@ -99,28 +99,34 @@ class Dispatcher
 
     public function dispatch($method, $uri)
     {
+
+        if ($route = $this->match($method, $uri)) {
+            return $this->strategy->dispatch(
+                $route['action'],
+                $route['params']
+            );
+        }
+
+        $this->dispatchNotFoundRoute($method, $uri);
+    }
+
+    public function match($method, $uri)
+    {
         $method = $this->getHttpMethod($method);
         $uri = $this->getUriPath($uri);
 
         if ($route = $this->collection->getStaticRoute($method, $uri)) {
-            
-            return $this->strategy->dispatch(
-                $route['action'],
-                []
-            );
-
+            return $route;
         }
 
         if ($route = $this->matchDinamicRoute($this->collection->getDinamicRoutes($method, $uri), $uri)) {
-
-            return $this->strategy->dispatch(
-                $this->resolveDinamicRouteAction($route['action'], $route['params']),
-                $route['params']
-            );
-
+            return [
+                'action' => $this->resolveDinamicRouteAction($route['action'], $route['params']),
+                'params' => $route['params']
+            ];
         }
 
-        $this->dispatchNotFoundRoute($method, $uri);
+        return false;
     }
 
     /**
@@ -138,7 +144,7 @@ class Dispatcher
         }
 
         if (in_array(strtolower($method), $methods = array_map('strtolower', array_flip(Mapper::$methods)))) {
-            return $method;
+            return Mapper::$methods[$method];
         }
 
         throw new Exception('The HTTP method given to the route dispatcher is not supported or is incorrect.');
@@ -254,11 +260,10 @@ class Dispatcher
     protected function checkDinamicRouteInOtherMethods($jump_method, $uri)
     {
         $methods = [];
-        $offset = substr_count($uri, '/') - 1;
 
         foreach (Mapper::$methods as $method) {
             if ($route = $this->matchDinamicRoute(
-                    $this->collection->getDinamicRoutes($method, $offset), $uri)
+                    $this->collection->getDinamicRoutes($method, $uri), $uri)
             ) {
                 $methods[$method] = $route;
             }

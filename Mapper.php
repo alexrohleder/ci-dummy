@@ -389,7 +389,9 @@ trait HttpMethodMapper
      */
     public function any($pattern, $action)
     {
-        $this->match(self::$methods, $pattern, $action);
+        foreach (self::$methods as $method) {
+            $this->set($method, $pattern, $action);
+        }
 
         return $this;
     }
@@ -397,13 +399,15 @@ trait HttpMethodMapper
     /**
      * Register a route into all HTTP methods except by $method.
      *
-     * @param string                $method   The method that must be excluded.
+     * @param string                $methods  The method that must be excluded.
      * @param string                $pattern  The URi pattern that should be matched.
      * @param string|array|\closure $action   The action that must be executed in case of match.
      */
-    public function except($method, $pattern, $action)
+    public function except($methods, $pattern, $action)
     {
-        $this->match(array_diff_key(self::$methods, (array) $method), $pattern, $action);
+        foreach (array_diff_key(self::$methods, array_flip((array) $methods)) as $method) {
+            $this->set($method, $pattern, $action);
+        }
 
         return $this;
     }
@@ -417,7 +421,7 @@ trait HttpMethodMapper
      */
     public function match($methods, $pattern, $action)
     {
-        foreach ((array) $methods as $method) {
+        foreach (array_intersect_key(self::$methods, array_flip((array) $methods)) as $method) {
             $this->set($method, $pattern, $action);
         }
 
@@ -467,7 +471,7 @@ trait ControllerMapper
             $method  = $route[0] . $route[1];
             $dinamic = $this->getMethodConstraints($controller, $method);
 
-            $this->match(self::$methods[$route[0]], $prefix . "$uri$dinamic", $controller . self::$action_separator . $method);
+            $this->match($route[0], $prefix . "$uri$dinamic", $controller . self::$action_separator . $method);
         }
 
         return $this;
@@ -533,7 +537,7 @@ trait ControllerMapper
     protected function getControllerMethods($methods)
     {
         $mapmethods = [];
-        $httpmethods = self::$methods;
+        $httpmethods = array_keys(self::$methods);
 
         foreach ($methods as $classmethod) {
             foreach ($httpmethods as $httpmethod) {
@@ -692,7 +696,7 @@ trait ResourceMapper
 
         foreach ($actions as $action => $map) {
             $this->set(self::$methods[$map[0]], str_replace(':name', $name, $map[1]), 
-                is_string($controller) ? "$controller#$action" : [$controller, $action]);
+                is_string($controller) ? $controller . self::$action_separator . $action : [$controller, $action]);
         }
     }
 
